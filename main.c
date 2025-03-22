@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    printf("- Converting OPUS at path \"%s\" to WAV at path \"%s\"\n\n", argv[1], argv[2]);
+    printf("- Converting OPUS at path \"%s\" to WAV at path \"%s\"..\n\n", argv[1], argv[2]);
 
     MemoryFile mfOpus = MemoryFileCreate(argv[1]);
 
@@ -49,7 +49,11 @@ int main(int argc, char** argv) {
         sampleRate, channelCount
     );
 
+    ListDestroy(&samples);
+
     MemoryFileWrite(&mfWav, argv[2]);
+
+    MemoryFileDestroy(&mfWav);
 
     printf(" OK\n");
 
