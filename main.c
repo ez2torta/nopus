@@ -27,7 +27,7 @@ int main(int argc, char** argv) {
 
     MemoryFile mfOpus = MemoryFileCreate(argv[1]);
 
-    OpusPreprocess(mfOpus.data_u8, mfOpus.data_u8 + mfOpus.size);
+    OpusPreprocess(mfOpus.data_u8);
 
     u32 channelCount = OpusGetChannelCount(mfOpus.data_u8);
     u32 sampleRate = OpusGetSampleRate(mfOpus.data_u8);
