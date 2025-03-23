@@ -30,17 +30,17 @@ typedef struct __attribute__((packed)) {
 
     u8 version; // Compare to OPUS_VERSION.
 
-    u8 channelCount;
+    u8 channelCount; // Values that are not 1 or 2 are illegal.
 
     u16 frameSize; // Frame size if constant bitrate, 0 if variable bitrate.
 
-    u32 sampleRate;
+    u32 sampleRate; // Allowed values: 48000, 24000, 16000, 12000, and 8000.
 
-    u32 dataOffset;
-    u32 _unk14;
-    u32 contextOffset;
+    u32 dataOffset; // Offset to the data chunk (OpusDataChunk).
+    u32 _unk14; // Offset to a section with the ID 0x80000002, can't find it anywhere ..
+    u32 contextOffset; // Offset to a section with the ID 0x80000003, supposedly holds looping info.
 
-    u16 preSkipSamples; // Pre-skip sample count.
+    u16 preSkipSamples; // The amount of samples that should be skipped at the beginning of playback.
 
     u16 _pad16;
 } OpusFileHeader;
@@ -53,10 +53,10 @@ typedef struct __attribute__((packed)) {
 } OpusDataChunk;
 
 typedef struct __attribute__((packed)) {
-    u32 length;
-    u32 finalRange;
-    u8 data[0];
-} OpusFrame;
+    u32 packetSize; // Length of the Opus packet. In big-endian for some reason.
+    u32 finalRange; // Not sure what this is ..
+    u8 packet[0];
+} OpusPacketHeader;
 
 void OpusPreprocess(u8* opusData) {
     OpusFileHeader* fileHeader = (OpusFileHeader*)opusData;
@@ -121,12 +121,12 @@ ListData OpusDecode(u8* opusData) {
     int samplesLeftToSkip = fileHeader->preSkipSamples;
 
     while (offset < dataChunk->chunkSize) {
-        OpusFrame* opusFrame = (OpusFrame*)(dataChunk->data + offset);
-        u32 length = __builtin_bswap32(opusFrame->length);
+        OpusPacketHeader* packetHeader = (OpusPacketHeader*)(dataChunk->data + offset);
+        u32 packetSize = __builtin_bswap32(packetHeader->packetSize);
 
-        offset += sizeof(OpusFrame) + length;
+        offset += sizeof(OpusPacketHeader) + packetSize;
 
-        int samplesDecoded = opus_decode(decoder, opusFrame->data, length, tempSamples, coFrameSize, 0);
+        int samplesDecoded = opus_decode(decoder, packetHeader->packet, packetSize, tempSamples, coFrameSize, 0);
         if (samplesDecoded < 0)
             panic("OpusProcess: opus_decode fail: %s", opus_strerror(samplesDecoded));
 
