@@ -26,7 +26,7 @@
 
 typedef struct __attribute__((packed)) {
     u32 chunkId; // Compare to CHUNK_HEADER_ID.
-    u32 chunkSize; // Not including chunkId and chunkSize. Usually 0x18.
+    u32 chunkSize; // Exclusive of chunkId and chunkSize. Usually 0x18.
 
     u8 version; // Compare to OPUS_VERSION.
 
@@ -37,7 +37,7 @@ typedef struct __attribute__((packed)) {
     u32 sampleRate;
 
     u32 dataOffset;
-    u32 _unk14; // 'frame data offset' (seek table? not seen)
+    u32 _unk14;
     u32 contextOffset;
 
     u16 preSkipSamples; // Pre-skip sample count.
@@ -47,7 +47,7 @@ typedef struct __attribute__((packed)) {
 
 typedef struct __attribute__((packed)) {
     u32 chunkId; // Compare to CHUNK_DATA_ID.
-    u32 chunkSize; // Not including chunkId and chunkSize.
+    u32 chunkSize; // Exclusive of chunkId and chunkSize.
 
     u8 data[0]; // Dynamically sized OpusFrames.
 } OpusDataChunk;
@@ -87,6 +87,21 @@ void OpusPreprocess(u8* opusData, u8* opusDataEnd) {
 
     if (fileHeader->contextOffset != 0)
         warn("OPUS context is present but will be ignored");
+    
+    if (
+        fileHeader->sampleRate != 48000 &&
+        fileHeader->sampleRate != 24000 &&
+        fileHeader->sampleRate != 16000 &&
+        fileHeader->sampleRate != 12000 &&
+        fileHeader->sampleRate != 8000
+    )
+        panic("Invalid OPUS sample rate (%uhz)", fileHeader->sampleRate);
+
+    if (
+        fileHeader->channelCount != 1 &&
+        fileHeader->channelCount != 2
+    )
+        panic("Invalid OPUS channel count (%u)", fileHeader->channelCount);
 
     OpusDataChunk* dataChunk = _OpusFindChunk(opusData, opusDataEnd, CHUNK_DATA_ID);
     if (!dataChunk)
@@ -122,17 +137,34 @@ ListData OpusDecode(u8* opusData) {
     
     unsigned offset = 0;
 
+    int samplesLeftToSkip = fileHeader->preSkipSamples;
+
     while (offset < dataChunk->chunkSize) {
         OpusFrame* opusFrame = (OpusFrame*)(dataChunk->data + offset);
         u32 length = __builtin_bswap32(opusFrame->length);
+
+        offset += sizeof(OpusFrame) + length;
 
         int samplesDecoded = opus_decode(decoder, opusFrame->data, length, tempSamples, coFrameSize, 0);
         if (samplesDecoded < 0)
             panic("OpusProcess: opus_decode fail: %s", opus_strerror(samplesDecoded));
 
-        ListAddRange(&samples, tempSamples, samplesDecoded * fileHeader->channelCount);
-
-        offset += sizeof(OpusFrame) + length;
+        if (samplesLeftToSkip > 0) {
+            // Full skip.
+            if (samplesDecoded <= samplesLeftToSkip) {
+                samplesLeftToSkip -= samplesDecoded;
+                continue;
+            }
+            // Partial skip.
+            else {
+                int remainingSamples = samplesDecoded - samplesLeftToSkip;
+                ListAddRange(&samples, tempSamples + samplesLeftToSkip, remainingSamples * fileHeader->channelCount);
+                samplesLeftToSkip = 0;
+            }
+        }
+        // No skip.
+        else
+            ListAddRange(&samples, tempSamples, samplesDecoded * fileHeader->channelCount);
     }
 
     opus_decoder_destroy(decoder);
