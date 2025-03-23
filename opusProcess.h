@@ -58,7 +58,26 @@ typedef struct __attribute__((packed)) {
     u8 data[0];
 } OpusFrame;
 
-void OpusPreprocess(u8* opusData) {
+typedef struct __attribute__((packed)) {
+    u32 chunkId;
+    u32 chunkSize; // Exclusive of chunkId and chunkSize.
+} OpusDummyChunk;
+
+void* _OpusFindChunk(u8* opusData, u8* opusDataEnd, u32 chunkId) {
+    OpusDummyChunk* currentChunk = (OpusDummyChunk*)opusData;
+    while (opusDataEnd ? ((u8*)currentChunk < opusDataEnd) : 1) {
+        if (currentChunk->chunkId == chunkId)
+            return (void*)currentChunk;
+        
+        currentChunk = (OpusDummyChunk*)(
+            (u8*)(currentChunk + 1) + currentChunk->chunkSize
+        );
+    }
+
+    return NULL;
+}
+
+void OpusPreprocess(u8* opusData, u8* opusDataEnd) {
     OpusFileHeader* fileHeader = (OpusFileHeader*)opusData;
 
     if (fileHeader->chunkId == OGG_OPUS_ID)
@@ -69,9 +88,9 @@ void OpusPreprocess(u8* opusData) {
     if (fileHeader->contextOffset != 0)
         warn("OPUS context is present but will be ignored");
 
-    OpusDataChunk* dataChunk = (OpusDataChunk*)(opusData + fileHeader->dataOffset);
-    if (dataChunk->chunkId != CHUNK_DATA_ID)
-        panic("OPUS data chunk ID is nonmatching");
+    OpusDataChunk* dataChunk = _OpusFindChunk(opusData, opusDataEnd, CHUNK_DATA_ID);
+    if (!dataChunk)
+        panic("OPUS data chunk was not found");
 }
 
 u32 OpusGetChannelCount(u8* opusData) {
@@ -83,7 +102,7 @@ u32 OpusGetSampleRate(u8* opusData) {
 
 ListData OpusDecode(u8* opusData) {
     OpusFileHeader* fileHeader = (OpusFileHeader*)opusData;
-    OpusDataChunk* dataChunk = (OpusDataChunk*)(opusData + fileHeader->dataOffset);
+    OpusDataChunk* dataChunk = _OpusFindChunk(opusData, NULL, CHUNK_DATA_ID);
 
     int error;
     OpusDecoder* decoder = opus_decoder_create(fileHeader->sampleRate, fileHeader->channelCount, &error);
