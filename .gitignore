@@ -1,5 +1,7 @@
 .vscode
 
+*.o
+
 nopus
 
 *.opus
