@@ -25,7 +25,7 @@
 #define OGG_OPUS_ID IDENTIFIER_TO_U32('O','g','g','S')
 
 typedef struct __attribute__((packed)) {
-    u32 chunkId; // Compare to CHUNK_FILE_HEADER_ID.
+    u32 chunkId; // Compare to CHUNK_HEADER_ID.
     u32 chunkSize; // Not including chunkId and chunkSize. Usually 0x18.
 
     u8 version; // Compare to OPUS_VERSION.
@@ -46,7 +46,7 @@ typedef struct __attribute__((packed)) {
 } OpusFileHeader;
 
 typedef struct __attribute__((packed)) {
-    u32 chunkId; // Compare to CHUNK_FILE_HEADER_ID.
+    u32 chunkId; // Compare to CHUNK_DATA_ID.
     u32 chunkSize; // Not including chunkId and chunkSize.
 
     u8 data[0]; // Dynamically sized OpusFrames.
