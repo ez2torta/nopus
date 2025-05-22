@@ -1,8 +1,12 @@
-.vscode
-
-*.o
-
-nopus
-
+# Opus files generated during testing
 *.opus
-*.wav
+*.opus.wav
+# Scripts generated for testing
+analyze_*.sh
+combine_*.sh
+hybrid_*.sh
+*.sh
+# Other files
+vgmstream-cli
+vgmstream-linux-cli.zip
+analysis_results/
