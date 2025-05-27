@@ -448,18 +448,39 @@ MemoryFile OpusBuildCapcom(s16* samples, u32 sampleCount, u32 sampleRate,
         int targetSize = orig_packet_sizes[p];
         int try_bitrate = bitRate;
         int tries = 0;
+        const int BITRATE_MIN = 8000;
+        const int BITRATE_MAX = 512000;
         // Ajustar bitrate para igualar tamaño de paquete (solo para el primer paquete, luego usar mismo bitrate)
-        do {
+        if (p == 0) {
+            int best_diff = 999999;
+            int best_bytes = 0;
+            int best_bitrate = try_bitrate;
+            for (tries = 0; tries < 30; ++tries) {
+                opus_encoder_ctl(encoder, OPUS_SET_BITRATE(try_bitrate));
+                nbBytes = opus_encode(encoder, samples + i, frameSize, buffer, sizeof(buffer));
+                if (nbBytes < 0)
+                    panic("OpusBuildCapcom: opus_encode failed: %s", opus_strerror(nbBytes));
+                int diff = abs(nbBytes - targetSize);
+                if (diff < best_diff) {
+                    best_diff = diff;
+                    best_bytes = nbBytes;
+                    best_bitrate = try_bitrate;
+                }
+                if (nbBytes == targetSize) break;
+                if (nbBytes > targetSize) try_bitrate -= 2000;
+                else if (nbBytes < targetSize) try_bitrate += 2000;
+                if (try_bitrate < BITRATE_MIN || try_bitrate > BITRATE_MAX) break;
+            }
+            nbBytes = best_bytes;
+            opus_encoder_ctl(encoder, OPUS_SET_BITRATE(best_bitrate));
+        } else {
             opus_encoder_ctl(encoder, OPUS_SET_BITRATE(try_bitrate));
             nbBytes = opus_encode(encoder, samples + i, frameSize, buffer, sizeof(buffer));
             if (nbBytes < 0)
                 panic("OpusBuildCapcom: opus_encode failed: %s", opus_strerror(nbBytes));
-            if (tries++ > 20) break; // Evitar bucle infinito
-            if (nbBytes > targetSize) try_bitrate -= 1000;
-            else if (nbBytes < targetSize) try_bitrate += 1000;
-        } while (nbBytes != targetSize && p == 0);
-        // Si no se logra igualar, se deja el más cercano
-        nbBytes = (nbBytes > targetSize) ? targetSize : nbBytes;
+        }
+        // Si no se logra igualar, se deja el más cercano (nunca mayor que el target)
+        if (nbBytes > targetSize) nbBytes = targetSize;
 
         // Almacenar el tamaño del paquete (big endian)
         u32 packetSizeBE = __builtin_bswap32(nbBytes);
