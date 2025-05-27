@@ -441,69 +441,102 @@ MemoryFile OpusBuildCapcom(s16* samples, u32 sampleCount, u32 sampleRate,
     // Número de paquetes
     u32 packetCount = 0;
     
-    // Codificar los paquetes igualando los tamaños originales
-    for (size_t p = 0, i = 0; p < orig_packet_count && i + samplesPerFrame <= sampleCount; ++p, i += samplesPerFrame) {
-        u8 buffer[8192];
-        int nbBytes = 0;
-        int targetSize = orig_packet_sizes[p];
-        int try_bitrate = bitRate;
-        int tries = 0;
-        const int BITRATE_MIN = 8000;
-        const int BITRATE_MAX = 512000;
-        // Ajustar bitrate para igualar tamaño de paquete (solo para el primer paquete, luego usar mismo bitrate)
-        if (p == 0) {
-            int best_diff = 999999;
-            int best_bytes = 0;
-            int best_bitrate = try_bitrate;
-            for (tries = 0; tries < 30; ++tries) {
+    if (orig_packet_sizes && orig_packet_count > 0) {
+        // Codificar los paquetes igualando los tamaños originales
+        for (size_t p = 0, i = 0; p < orig_packet_count && i + samplesPerFrame <= sampleCount; ++p, i += samplesPerFrame) {
+            u8 buffer[8192];
+            int nbBytes = 0;
+            int targetSize = orig_packet_sizes[p];
+            int try_bitrate = bitRate;
+            int tries = 0;
+            const int BITRATE_MIN = 8000;
+            const int BITRATE_MAX = 512000;
+            // Ajustar bitrate para igualar tamaño de paquete (solo para el primer paquete, luego usar mismo bitrate)
+            if (p == 0) {
+                int best_diff = 999999;
+                int best_bytes = 0;
+                int best_bitrate = try_bitrate;
+                for (tries = 0; tries < 30; ++tries) {
+                    opus_encoder_ctl(encoder, OPUS_SET_BITRATE(try_bitrate));
+                    nbBytes = opus_encode(encoder, samples + i, frameSize, buffer, sizeof(buffer));
+                    if (nbBytes < 0)
+                        panic("OpusBuildCapcom: opus_encode failed: %s", opus_strerror(nbBytes));
+                    int diff = abs(nbBytes - targetSize);
+                    if (diff < best_diff) {
+                        best_diff = diff;
+                        best_bytes = nbBytes;
+                        best_bitrate = try_bitrate;
+                    }
+                    if (nbBytes == targetSize) break;
+                    if (nbBytes > targetSize) try_bitrate -= 2000;
+                    else if (nbBytes < targetSize) try_bitrate += 2000;
+                    if (try_bitrate < BITRATE_MIN || try_bitrate > BITRATE_MAX) break;
+                }
+                nbBytes = best_bytes;
+                opus_encoder_ctl(encoder, OPUS_SET_BITRATE(best_bitrate));
+            } else {
                 opus_encoder_ctl(encoder, OPUS_SET_BITRATE(try_bitrate));
                 nbBytes = opus_encode(encoder, samples + i, frameSize, buffer, sizeof(buffer));
                 if (nbBytes < 0)
                     panic("OpusBuildCapcom: opus_encode failed: %s", opus_strerror(nbBytes));
-                int diff = abs(nbBytes - targetSize);
-                if (diff < best_diff) {
-                    best_diff = diff;
-                    best_bytes = nbBytes;
-                    best_bitrate = try_bitrate;
-                }
-                if (nbBytes == targetSize) break;
-                if (nbBytes > targetSize) try_bitrate -= 2000;
-                else if (nbBytes < targetSize) try_bitrate += 2000;
-                if (try_bitrate < BITRATE_MIN || try_bitrate > BITRATE_MAX) break;
             }
-            nbBytes = best_bytes;
-            opus_encoder_ctl(encoder, OPUS_SET_BITRATE(best_bitrate));
-        } else {
-            opus_encoder_ctl(encoder, OPUS_SET_BITRATE(try_bitrate));
-            nbBytes = opus_encode(encoder, samples + i, frameSize, buffer, sizeof(buffer));
+            // Si no se logra igualar, se deja el más cercano (nunca mayor que el target)
+            if (nbBytes > targetSize) nbBytes = targetSize;
+
+            // Almacenar el tamaño del paquete (big endian)
+            u32 packetSizeBE = __builtin_bswap32(nbBytes);
+            ListAddRange(&packetList, (u8*)&packetSizeBE, 4);
+
+            // Para el primer paquete, usar el valor específico 0xF0000000
+            u32 finalRange;
+            if (p == 0) {
+                finalRange = 0xF0000000;
+            } else {
+                opusError = opus_encoder_ctl(encoder, OPUS_GET_FINAL_RANGE(&finalRange));
+                if (opusError < 0)
+                    panic("OpusBuildCapcom: failed to get encoder final range");
+                finalRange = __builtin_bswap32(finalRange);
+            }
+
+            // Almacenar finalRange (big endian)
+            ListAddRange(&packetList, (u8*)&finalRange, 4);
+
+            // Almacenar los datos del paquete
+            ListAddRange(&packetList, buffer, nbBytes);
+
+            packetCount++;
+        }
+    } else {
+        // Codificar todos los paquetes posibles del audio de entrada
+        for (u32 i = 0; i + samplesPerFrame <= sampleCount; i += samplesPerFrame) {
+            u8 buffer[8192];
+            int nbBytes = opus_encode(encoder, samples + i, frameSize, buffer, sizeof(buffer));
             if (nbBytes < 0)
                 panic("OpusBuildCapcom: opus_encode failed: %s", opus_strerror(nbBytes));
+
+            // Almacenar el tamaño del paquete (big endian)
+            u32 packetSizeBE = __builtin_bswap32(nbBytes);
+            ListAddRange(&packetList, (u8*)&packetSizeBE, 4);
+
+            // Para el primer paquete, usar el valor específico 0xF0000000
+            u32 finalRange;
+            if (i == 0) {
+                finalRange = 0xF0000000;
+            } else {
+                opusError = opus_encoder_ctl(encoder, OPUS_GET_FINAL_RANGE(&finalRange));
+                if (opusError < 0)
+                    panic("OpusBuildCapcom: failed to get encoder final range");
+                finalRange = __builtin_bswap32(finalRange);
+            }
+
+            // Almacenar finalRange (big endian)
+            ListAddRange(&packetList, (u8*)&finalRange, 4);
+
+            // Almacenar los datos del paquete
+            ListAddRange(&packetList, buffer, nbBytes);
+
+            packetCount++;
         }
-        // Si no se logra igualar, se deja el más cercano (nunca mayor que el target)
-        if (nbBytes > targetSize) nbBytes = targetSize;
-
-        // Almacenar el tamaño del paquete (big endian)
-        u32 packetSizeBE = __builtin_bswap32(nbBytes);
-        ListAddRange(&packetList, (u8*)&packetSizeBE, 4);
-
-        // Para el primer paquete, usar el valor específico 0xF0000000
-        u32 finalRange;
-        if (p == 0) {
-            finalRange = 0xF0000000;
-        } else {
-            opusError = opus_encoder_ctl(encoder, OPUS_GET_FINAL_RANGE(&finalRange));
-            if (opusError < 0)
-                panic("OpusBuildCapcom: failed to get encoder final range");
-            finalRange = __builtin_bswap32(finalRange);
-        }
-
-        // Almacenar finalRange (big endian)
-        ListAddRange(&packetList, (u8*)&finalRange, 4);
-
-        // Almacenar los datos del paquete
-        ListAddRange(&packetList, buffer, nbBytes);
-
-        packetCount++;
     }
     
     opus_encoder_destroy(encoder);
