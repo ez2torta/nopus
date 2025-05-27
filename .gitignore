@@ -10,3 +10,18 @@ hybrid_*.sh
 vgmstream-cli
 vgmstream-linux-cli.zip
 analysis_results/
+# Compiled object files
+*.o
+
+# Compiled binaries
+nopus
+create_capcom_opus
+
+# macOS system files
+.DS_Store
+
+# Backup files
+*~
+
+# Logs
+*.log
