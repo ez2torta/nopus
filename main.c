@@ -9,7 +9,20 @@
 
 #include "wavProcess.h"
 
+
+#include <libgen.h>
+#include <string.h>
 #include "type.h"
+
+// Helper para obtener el nombre base sin extensión
+char* baseName(const char* path) {
+    static char buf[256];
+    snprintf(buf, sizeof(buf), "%s", path);
+    char* base = basename(buf);
+    char* dot = strrchr(base, '.');
+    if (dot) *dot = '\0';
+    return base;
+}
 
 int main(int argc, char** argv) {
     printf(
@@ -28,6 +41,10 @@ int main(int argc, char** argv) {
         printf("- Converting OPUS at path \"%s\" to WAV at path \"%s\"..\n\n", argv[2], argv[3]);
 
         MemoryFile mfOpus = MemoryFileCreate(argv[2]);
+        if (!mfOpus.data_void || mfOpus.size == 0) {
+            printf("Error: Could not read input OPUS file.\n");
+            return 1;
+        }
 
         OpusPreprocess(mfOpus.data_u8);
 
@@ -38,6 +55,11 @@ int main(int argc, char** argv) {
         fflush(stdout);
 
         ListData samples = OpusDecode(mfOpus.data_u8);
+        if (!samples.data || samples.elementCount == 0) {
+            printf("Error: Failed to decode OPUS file.\n");
+            MemoryFileDestroy(&mfOpus);
+            return 1;
+        }
 
         printf(" OK\n");
 
@@ -53,8 +75,12 @@ int main(int argc, char** argv) {
 
         ListDestroy(&samples);
 
-        MemoryFileWrite(&mfWav, argv[3]);
+        if (!mfWav.data_void || mfWav.size == 0) {
+            printf("Error: Failed to build WAV file.\n");
+            return 1;
+        }
 
+        MemoryFileWrite(&mfWav, argv[3]);
         MemoryFileDestroy(&mfWav);
 
         printf(" OK\n");
@@ -63,6 +89,10 @@ int main(int argc, char** argv) {
         printf("- Converting WAV at path \"%s\" to OPUS at path \"%s\"..\n\n", argv[2], argv[3]);
 
         MemoryFile mfWav = MemoryFileCreate(argv[2]);
+        if (!mfWav.data_void || mfWav.size == 0) {
+            printf("Error: Could not read input WAV file.\n");
+            return 1;
+        }
 
         WavPreprocess(mfWav.data_u8, mfWav.size);
 
@@ -72,10 +102,22 @@ int main(int argc, char** argv) {
         s16* samples = WavGetPCM16(mfWav.data_u8, mfWav.size);
         u32 sampleCount = WavGetSampleCount(mfWav.data_u8, mfWav.size);
 
+        if (!samples || sampleCount == 0) {
+            printf("Error: Failed to extract PCM samples from WAV.\n");
+            MemoryFileDestroy(&mfWav);
+            return 1;
+        }
+
         printf("Encoding..");
         fflush(stdout);
 
         MemoryFile mfOpus = OpusBuild(samples, sampleCount, sampleRate, channelCount);
+        if (!mfOpus.data_void || mfOpus.size == 0) {
+            printf("Error: Failed to encode OPUS file.\n");
+            free(samples);
+            MemoryFileDestroy(&mfWav);
+            return 1;
+        }
 
         printf(" OK\n");
         
@@ -86,7 +128,6 @@ int main(int argc, char** argv) {
         fflush(stdout);
 
         MemoryFileWrite(&mfOpus, argv[3]);
-
         MemoryFileDestroy(&mfOpus);
 
         printf(" OK\n");
@@ -163,7 +204,47 @@ int main(int argc, char** argv) {
             loopEnd = 0;
         }
 
-        MemoryFile mfOpus = OpusBuildCapcom(samples, sampleCount, sampleRate, channelCount, loopStart, loopEnd);
+        // (Llamada antigua eliminada, solo se usa la versión extendida más abajo)
+        // Leer el archivo OPUS original para extraer header y tamaños de paquetes
+        char original_opus_path[512];
+        snprintf(original_opus_path, sizeof(original_opus_path), "opus_originales/%s.opus", baseName(argv[2]));
+        MemoryFile mfOrigOpus = MemoryFileCreate(original_opus_path);
+        if (!mfOrigOpus.data_void || mfOrigOpus.size == 0) {
+            printf("Error: Could not read original OPUS file for header/packet matching.\n");
+            free(samples);
+            MemoryFileDestroy(&mfWav);
+            return 1;
+        }
+
+        // Extraer configData (0x20, 16 bytes) y criticalBytes (0x38, 8 bytes)
+        u8 configData[16];
+        u8 criticalBytes[8];
+        memcpy(configData, (u8*)mfOrigOpus.data_void + 0x20, 16);
+        memcpy(criticalBytes, (u8*)mfOrigOpus.data_void + 0x38, 8);
+
+        // Extraer tamaños de paquetes del original
+        // Buscar el offset del primer paquete (header Capcom + header Nintendo + chunk header)
+        size_t packet_data_offset = 0x30 + 0x18 + 0x0C;
+        size_t orig_size = mfOrigOpus.size;
+        size_t pos = packet_data_offset;
+        #define MAX_PACKETS 4096
+        u32 orig_packet_sizes[MAX_PACKETS];
+        size_t orig_packet_count = 0;
+        while (pos + 8 <= orig_size && orig_packet_count < MAX_PACKETS) {
+            u32 sz = (mfOrigOpus.data_u8[pos] << 24) | (mfOrigOpus.data_u8[pos+1] << 16) | (mfOrigOpus.data_u8[pos+2] << 8) | (mfOrigOpus.data_u8[pos+3]);
+            orig_packet_sizes[orig_packet_count++] = sz;
+            u32 skip = sz + 8;
+            pos += skip;
+        }
+
+        MemoryFile mfOpus = OpusBuildCapcom(samples, sampleCount, sampleRate, channelCount, loopStart, loopEnd, configData, criticalBytes, orig_packet_sizes, orig_packet_count);
+        MemoryFileDestroy(&mfOrigOpus);
+        if (!mfOpus.data_void || mfOpus.size == 0) {
+            printf("Error: Failed to encode Capcom OPUS file.\n");
+            free(samples);
+            MemoryFileDestroy(&mfWav);
+            return 1;
+        }
 
         printf(" OK\n");
         
@@ -174,7 +255,6 @@ int main(int argc, char** argv) {
         fflush(stdout);
 
         MemoryFileWrite(&mfOpus, argv[3]);
-
         MemoryFileDestroy(&mfOpus);
 
         printf(" OK\n");

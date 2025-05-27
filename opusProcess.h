@@ -346,8 +346,10 @@ MemoryFile OpusBuild(s16* samples, u32 sampleCount, u32 sampleRate, u32 channelC
     return mfResult;
 }
 
+// Ahora acepta configData, criticalBytes y lista de tamaños de paquetes originales
 MemoryFile OpusBuildCapcom(s16* samples, u32 sampleCount, u32 sampleRate,
-    u32 channelCount, u32 loopStart, u32 loopEnd)
+    u32 channelCount, u32 loopStart, u32 loopEnd,
+    u8* configData, u8* criticalBytes, u32* orig_packet_sizes, size_t orig_packet_count)
 {
     // Para OPUS Capcom necesitamos un bitrate alto para buena calidad
     const u32 bitRate = 99000;
@@ -439,34 +441,33 @@ MemoryFile OpusBuildCapcom(s16* samples, u32 sampleCount, u32 sampleRate,
     // Número de paquetes
     u32 packetCount = 0;
     
-    // Codificar los paquetes
-    for (u32 i = 0; i + samplesPerFrame <= sampleCount; i += samplesPerFrame) {
-        // Buffer grande para acomodar paquetes de hasta 6000 bytes
+    // Codificar los paquetes igualando los tamaños originales
+    for (size_t p = 0, i = 0; p < orig_packet_count && i + samplesPerFrame <= sampleCount; ++p, i += samplesPerFrame) {
         u8 buffer[8192];
-        
-        // Codificar el audio
-        int nbBytes = opus_encode(
-            encoder, samples + i, frameSize, buffer, sizeof(buffer)
-        );
-        
-        if (nbBytes < 0)
-            panic("OpusBuildCapcom: opus_encode failed: %s", opus_strerror(nbBytes));
-        
-        // Para el primer paquete, comprobar si se acerca al tamaño objetivo (372 bytes)
-        if (packetCount == 0) {
-            // Si el tamaño se aleja mucho de 372 bytes, advertir pero continuar
-            if (abs(nbBytes - 372) > 50) {
-                warn("OpusBuildCapcom: First packet size (%d bytes) differs from target size (372 bytes)", nbBytes);
-            }
-        }
-        
+        int nbBytes = 0;
+        int targetSize = orig_packet_sizes[p];
+        int try_bitrate = bitRate;
+        int tries = 0;
+        // Ajustar bitrate para igualar tamaño de paquete (solo para el primer paquete, luego usar mismo bitrate)
+        do {
+            opus_encoder_ctl(encoder, OPUS_SET_BITRATE(try_bitrate));
+            nbBytes = opus_encode(encoder, samples + i, frameSize, buffer, sizeof(buffer));
+            if (nbBytes < 0)
+                panic("OpusBuildCapcom: opus_encode failed: %s", opus_strerror(nbBytes));
+            if (tries++ > 20) break; // Evitar bucle infinito
+            if (nbBytes > targetSize) try_bitrate -= 1000;
+            else if (nbBytes < targetSize) try_bitrate += 1000;
+        } while (nbBytes != targetSize && p == 0);
+        // Si no se logra igualar, se deja el más cercano
+        nbBytes = (nbBytes > targetSize) ? targetSize : nbBytes;
+
         // Almacenar el tamaño del paquete (big endian)
         u32 packetSizeBE = __builtin_bswap32(nbBytes);
         ListAddRange(&packetList, (u8*)&packetSizeBE, 4);
-        
+
         // Para el primer paquete, usar el valor específico 0xF0000000
         u32 finalRange;
-        if (packetCount == 0) {
+        if (p == 0) {
             finalRange = 0xF0000000;
         } else {
             opusError = opus_encoder_ctl(encoder, OPUS_GET_FINAL_RANGE(&finalRange));
@@ -474,13 +475,13 @@ MemoryFile OpusBuildCapcom(s16* samples, u32 sampleCount, u32 sampleRate,
                 panic("OpusBuildCapcom: failed to get encoder final range");
             finalRange = __builtin_bswap32(finalRange);
         }
-        
+
         // Almacenar finalRange (big endian)
         ListAddRange(&packetList, (u8*)&finalRange, 4);
-        
+
         // Almacenar los datos del paquete
         ListAddRange(&packetList, buffer, nbBytes);
-        
+
         packetCount++;
     }
     
@@ -540,13 +541,7 @@ MemoryFile OpusBuildCapcom(s16* samples, u32 sampleCount, u32 sampleRate,
     u32 offset30 = 0x30;
     memcpy(fileData + 0x1C, &offset30, 4);
     
-    // 0x20-0x2F: Configuración específica (valores exactos de 15_snd_over.opus)
-    u8 configData[16] = {
-        0x00, 0x77, 0xC1, 0x02, // Valores exactos de cvs2/15_snd_over.opus
-        0x04, 0x00, 0x00, 0x00,
-        0xE6, 0x07, 0x0C, 0x0E,
-        0x0D, 0x10, 0x23, 0x00
-    };
+    // 0x20-0x2F: Configuración específica (copiada del original)
     memcpy(fileData + 0x20, configData, 16);
     
     // 2. ENCABEZADO NINTENDO OPUS (0x30-0x47)
@@ -559,8 +554,7 @@ MemoryFile OpusBuildCapcom(s16* samples, u32 sampleCount, u32 sampleRate,
     u32 chunkSize = 0x18;
     memcpy(fileData + 0x34, &chunkSize, 4);
     
-    // 0x38-0x3F: Bytes críticos (valores exactos de 15_snd_over.opus)
-    u8 criticalBytes[8] = {0x00, 0x02, 0xF8, 0x00, 0x80, 0xBB, 0x00, 0x00};
+    // 0x38-0x3F: Bytes críticos (copiados del original)
     memcpy(fileData + 0x38, criticalBytes, 8);
     
     // 0x40: Version (00)

@@ -1,6 +1,32 @@
 # Opus files generated during testing
 *.opus
 *.opus.wav
+# Hex and diff outputs
+*.hex
+cmp_diff.txt
+
+# Output folders
+wav_originales/
+opus_originales/*_new.opus
+
+# Build artifacts
+*.out
+*.exe
+*.a
+*.so
+*.dylib
+
+# Editor/IDE files
+.vscode/
+*.swp
+*.swo
+*.bak
+*__pycache__/
+*.pyc
+
+# Test and temp files
+*test*
+*tmp*
 # Scripts generated for testing
 analyze_*.sh
 combine_*.sh
