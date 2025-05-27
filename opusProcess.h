@@ -346,7 +346,17 @@ MemoryFile OpusBuild(s16* samples, u32 sampleCount, u32 sampleRate, u32 channelC
     return mfResult;
 }
 
-MemoryFile OpusBuildCapcom(s16* samples, u32 sampleCount, u32 sampleRate, u32 channelCount, u32 loopStart, u32 loopEnd) {
+MemoryFile OpusBuildCapcom(s16* samples, u32 sampleCount, u32 sampleRate,
+    u32 channelCount, u32 loopStart, u32 loopEnd)
+{
+    // Para OPUS Capcom necesitamos un bitrate alto para buena calidad
+    const u32 bitRate = 99000;
+    
+    // El frameSize debe ser 60ms (2880 muestras a 48kHz) 
+    // Esto se basa en el código de vgmstream donde OPUS_SWITCH usa frames de 60ms
+    const u32 frameSize = 2880;  // 60ms @ 48kHz
+    const u32 samplesPerFrame = frameSize;
+    
     if (
         sampleRate != 48000 && sampleRate != 24000 &&
         sampleRate != 16000 && sampleRate != 12000 &&
@@ -383,69 +393,46 @@ MemoryFile OpusBuildCapcom(s16* samples, u32 sampleCount, u32 sampleRate, u32 ch
         loopStart = 0;
         loopEnd = 0;
     }
-
-    // ----------- SOLUCIÓN FINAL: OPTIMIZACIÓN EXACTA PARA 15_SND_OVER.OPUS -----------
-    // Esta optimización está diseñada para generar exactamente los mismos parámetros
-    // de codificación que se observan en el archivo original 15_snd_over.opus
     
-    // El primer paquete debe ser exactamente 0x174 (372) bytes
-    // El valor finalRange debe ser exactamente 0xF0000000
+    // Variables para el encoder
+    OpusEncoder* encoder = NULL;
+    int opusError = 0;
     
-    // Codificar el audio utilizando parámetros optimizados para coincidir con el formato Capcom
-    int opusError;
-    OpusEncoder* encoder = opus_encoder_create(sampleRate, channelCount, OPUS_APPLICATION_AUDIO, &opusError);
+    // Inicializar el encoder de OPUS con configuración de alta calidad
+    // Basado en el análisis del código de vgmstream
+    encoder = opus_encoder_create(sampleRate, channelCount, OPUS_APPLICATION_AUDIO, &opusError);
     if (opusError < 0)
         panic("OpusBuildCapcom: opus_encoder_create failed: %s", opus_strerror(opusError));
-
-    // PARÁMETROS CRÍTICOS: Estos valores están ajustados específicamente para generar
-    // un paquete Opus de tamaño y características similares al original
     
-    // Bitrate exacto de 99000 bps como en los archivos originales de Capcom
-    opusError = opus_encoder_ctl(encoder, OPUS_SET_BITRATE(99000));
+    // Configurar el encoder con los parámetros óptimos
+    opusError = opus_encoder_ctl(encoder, OPUS_SET_BITRATE(bitRate));
     if (opusError < 0)
         panic("OpusBuildCapcom: failed to set Opus bitrate");
     
-    // Variable Bit Rate como en el original
-    opusError = opus_encoder_ctl(encoder, OPUS_SET_VBR(1));
+    opusError = opus_encoder_ctl(encoder, OPUS_SET_VBR(1)); // VBR habilitado
     if (opusError < 0)
-        panic("OpusBuildCapcom: failed to enable VBR");
+        panic("OpusBuildCapcom: failed to set Opus VBR");
     
-    // Sin restricción de VBR como en el original
-    opusError = opus_encoder_ctl(encoder, OPUS_SET_VBR_CONSTRAINT(0));
+    opusError = opus_encoder_ctl(encoder, OPUS_SET_VBR_CONSTRAINT(0)); // Sin restricción de VBR
     if (opusError < 0)
-        panic("OpusBuildCapcom: failed to disable VBR constraint");
+        panic("OpusBuildCapcom: failed to set Opus VBR constraint");
     
-    // Complejidad máxima para calidad óptima
-    opusError = opus_encoder_ctl(encoder, OPUS_SET_COMPLEXITY(10));
+    opusError = opus_encoder_ctl(encoder, OPUS_SET_COMPLEXITY(10)); // Máxima complejidad
     if (opusError < 0)
-        panic("OpusBuildCapcom: failed to set complexity");
+        panic("OpusBuildCapcom: failed to set Opus complexity");
     
-    // Optimización para contenido musical
-    opusError = opus_encoder_ctl(encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_MUSIC));
+    opusError = opus_encoder_ctl(encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_MUSIC)); // Optimizado para música
     if (opusError < 0)
-        panic("OpusBuildCapcom: failed to set signal type");
+        panic("OpusBuildCapcom: failed to set Opus signal type");
     
-    // Sin pérdida de paquetes, ideal para almacenamiento
-    opusError = opus_encoder_ctl(encoder, OPUS_SET_PACKET_LOSS_PERC(0));
+    opusError = opus_encoder_ctl(encoder, OPUS_SET_BANDWIDTH(OPUS_BANDWIDTH_FULLBAND)); // Máximo ancho de banda
     if (opusError < 0)
-        panic("OpusBuildCapcom: failed to set packet loss percentage");
-    
-    // Usar el máximo ancho de banda para calidad óptima
-    opusError = opus_encoder_ctl(encoder, OPUS_SET_BANDWIDTH(OPUS_BANDWIDTH_FULLBAND));
-    if (opusError < 0)
-        panic("OpusBuildCapcom: failed to set bandwidth");
-    
-    // CRÍTICO: Ajustar el tamaño del frame para que coincida exactamente con el del archivo original
-    // El archivo original utiliza un framesize que genera un primer paquete de 372 bytes
-    // Usamos 60ms por frame (en vez de 20ms) para conseguir un tamaño similar
-    u32 frameDurationMs = 60; // 60ms para coincidir con el tamaño del paquete original
-    u32 frameSize = (sampleRate / 1000) * frameDurationMs;
-    u32 samplesPerFrame = frameSize * channelCount;
+        panic("OpusBuildCapcom: failed to set Opus bandwidth");
     
     // Valor de preSkip constante para 48kHz como en archivos Capcom
     int preSkipSamples = 312; // Valor observado para 48kHz
     
-    // Generación de paquetes Opus
+    // Generación de paquetes Opus - Usar ListData en lugar de List
     ListData packetList;
     ListInit(&packetList, sizeof(u8), 8192); // Buffer más grande para paquetes grandes
     
