@@ -167,7 +167,15 @@ int main(int argc, char** argv) {
         u32 sampleCount = WavGetSampleCount(mfWav.data_u8, mfWav.size);
 
         // Calcular el número de muestras por canal para los puntos de loop
-        u32 samplesPerChannel = sampleCount / channelCount;
+        u32 samplesPerChannel = (channelCount > 0) ? (sampleCount / channelCount) : 0;
+
+        // Depuración: imprimir información de entrada
+        printf("[DEBUG] WAV info: sampleCount=%u, channelCount=%u, sampleRate=%u\n", sampleCount, channelCount, sampleRate);
+        if (!samples || sampleCount == 0 || channelCount == 0) {
+            printf("[ERROR] WAV extraction failed: samples=%p, sampleCount=%u, channelCount=%u\n", (void*)samples, sampleCount, channelCount);
+            MemoryFileDestroy(&mfWav);
+            return 1;
+        }
         
         // For auto loop mode
         if (useAutoLoop) {
