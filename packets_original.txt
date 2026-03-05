@@ -1,7 +1,0 @@
-[DEBUG] Data chunk size: 2013265920 bytes
-Advertencia: el chunk de datos termina fuera del archivo (end=0x78000054, file=0x2D4F8)
-Packet 0: size = 2698248704 (0xA0D40200) at offset 0x54
-First packet sizes: [2698248704]
-Total packets: 1
-[INFO] Bitrate (header): 536870912 bps
-[INFO] Total samples (header): 194560

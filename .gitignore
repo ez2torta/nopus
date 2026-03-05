@@ -1,6 +1,10 @@
-# Opus files generated during testing
+# Opus files generated during testing (but allow samples/)
 *.opus
+!samples/opus/*.opus
+# WAV files (but allow samples/)
 *.opus.wav
+!samples/wav/*.wav
+*.mp3
 # Hex and diff outputs
 *.hex
 cmp_diff.txt
@@ -28,10 +32,10 @@ opus_originales/*_new.opus
 *test*
 *tmp*
 # Scripts generated for testing
-analyze_*.sh
-combine_*.sh
-hybrid_*.sh
-*.sh
+# analyze_*.sh
+# combine_*.sh
+# hybrid_*.sh
+# *.sh
 # Other files
 vgmstream-cli
 vgmstream-linux-cli.zip
