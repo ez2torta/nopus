@@ -6,199 +6,130 @@
 #include "common.h"
 #include "wavProcess.h"
 
-// Constantes específicas para el formato Capcom
-#define CAPCOM_HEADER_SIZE 0x30
-
-// Función para extraer muestras de un archivo WAV
-typedef struct {
-    s16* samples;
-    u32 sampleCount;
-    u32 channelCount;
-    u32 sampleRate;
-} WavData;
-
-WavData ExtractWavSamples(const u8* wavData, size_t size) {
-    WavData result = {0};
-    
-    // Verificar formato WAV básico (simplificado)
-    if (size < 44 || memcmp(wavData, "RIFF", 4) != 0 || memcmp(wavData + 8, "WAVE", 4) != 0) {
-        printf("Error: No es un archivo WAV válido\n");
-        return result;
-    }
-    
-    // Extraer información de formato (típicamente en offset 20-36)
-    result.channelCount = wavData[22] | (wavData[23] << 8);
-    result.sampleRate = wavData[24] | (wavData[25] << 8) | (wavData[26] << 16) | (wavData[27] << 24);
-    
-    // Encontrar chunk 'data'
-    u32 pos = 12; // Después de "WAVE"
-    while (pos + 8 < size) {
-        if (memcmp(wavData + pos, "data", 4) == 0) {
-            u32 dataSize = wavData[pos + 4] | (wavData[pos + 5] << 8) | 
-                          (wavData[pos + 6] << 16) | (wavData[pos + 7] << 24);
-            
-            result.samples = (s16*)(wavData + pos + 8);
-            result.sampleCount = dataSize / 2; // 16 bits = 2 bytes por muestra
-            break;
-        }
-        
-        // Avanzar al siguiente chunk
-        u32 chunkSize = wavData[pos + 4] | (wavData[pos + 5] << 8) | 
-                       (wavData[pos + 6] << 16) | (wavData[pos + 7] << 24);
-        pos += 8 + chunkSize;
-        pos = (pos + 1) & ~1; // Alineación a 2 bytes
-    }
-    
-    return result;
-}
-
-// Función simplificada para convertir WAV a Opus
-// En un caso real, usaríamos libopus para codificar correctamente
-// Esta es una versión simplificada para la demostración
-u8* SimpleOpusEncoding(s16* samples, u32 sampleCount, u32 channelCount, size_t* outSize) {
-    // Este es un placeholder - no es codificación real
-    // En una implementación real, llamaríamos a libopus
-    
-    // Creamos un encabezado Opus básico - asegurando espacio suficiente
-    size_t requiredSize = sampleCount * 2 + 0x38; // Espacio para datos + encabezado
-    u8* opusData = malloc(requiredSize);
-    if (!opusData) return NULL;
-    
-    // Inicializar memoria para prevenir accesos a memoria no inicializada
-    memset(opusData, 0, requiredSize);
-    
-    // Cabecera estándar de Opus para Nintendo Switch (simplificada)
-    u32* header = (u32*)opusData;
-    header[0] = 0x80000001; // 'basic info' chunk ID
-    header[1] = 0x24;       // chunk size
-    header[2] = 0x00000000; // version (0)
-    opusData[9] = channelCount; // channels
-    header[3] = 48000;      // sample rate
-    header[4] = 0x00000030; // data offset desde inicio
-    header[5] = 0x00000000; // frame data offset (no usado)
-    header[6] = 0x00000000; // context offset (no usado)
-    
-    // Cabecera de datos
-    u32* dataHeader = (u32*)(opusData + 0x30);
-    dataHeader[0] = 0x80000004; // 'data info' chunk ID
-    dataHeader[1] = sampleCount * 2; // data size en bytes
-    
-    // Solo copiamos los datos originales como placeholder
-    // (esto no es Opus real, pero sirve para probar la estructura)
-    memcpy(opusData + 0x38, samples, sampleCount * 2);
-    
-    *outSize = requiredSize;
-    return opusData;
-}
-
 int main(int argc, char *argv[]) {
-    if (argc < 5) {
-        printf("Uso: %s <archivo_entrada.wav> <archivo_salida.opus> <loop_start> <loop_end>\n", argv[0]);
+    if (argc < 4) {
+        printf("Uso: %s <entrada.wav> <salida.opus> <loop_start> <loop_end>\n", argv[0]);
+        printf("     %s <entrada.wav> <salida.opus> auto\n", argv[0]);
+        printf("       'auto' establece loop desde 0 hasta el final del audio\n");
         return 1;
     }
 
-    const char *input_file = argv[1];
+    const char *input_file  = argv[1];
     const char *output_file = argv[2];
-    int loop_start = atoi(argv[3]);
-    int loop_end = atoi(argv[4]);
 
-    printf("Creando archivo Opus formato Capcom usando:\n");
-    printf("Entrada: %s\n", input_file);
-    printf("Salida: %s\n", output_file);
-    printf("Loop start: %d\n", loop_start);
-    printf("Loop end: %d\n", loop_end);
+    u32 loopStart    = 0;
+    u32 loopEnd      = 0;
+    int hasLoopPoints = 0;
+    int useAutoLoop   = 0;
+
+    if (argc >= 4) {
+        if (strcmp(argv[3], "auto") == 0) {
+            useAutoLoop = 1;
+        } else if (argc >= 5) {
+            char *endptr;
+            loopStart = (u32)strtoul(argv[3], &endptr, 10);
+            if (*endptr != '\0') {
+                printf("Error: loop_start no es un número válido: '%s'\n", argv[3]);
+                return 1;
+            }
+            loopEnd = (u32)strtoul(argv[4], &endptr, 10);
+            if (*endptr != '\0') {
+                printf("Error: loop_end no es un número válido: '%s'\n", argv[4]);
+                return 1;
+            }
+            hasLoopPoints = 1;
+        } else {
+            printf("Advertencia: se necesitan loop_start y loop_end. Se usará sin puntos de loop.\n");
+        }
+    }
 
     // Leer archivo WAV
-    MemoryFile inputFileData = MemoryFileCreate(input_file);
-    if (!inputFileData.data_void) {
-        printf("Error: No se pudo leer el archivo de entrada\n");
+    MemoryFile mfWav = MemoryFileCreate(input_file);
+    if (!mfWav.data_void || mfWav.size == 0) {
+        printf("Error: No se pudo leer el archivo de entrada '%s'\n", input_file);
         return 1;
     }
 
-    // Extraer información del WAV
-    WavData wavData = ExtractWavSamples((u8*)inputFileData.data_void, inputFileData.size);
-    if (!wavData.samples) {
-        printf("Error: No se pudo procesar el archivo WAV\n");
-        free(inputFileData.data_void);
-        return 1;
-    }
-    
-    printf("Archivo WAV: Muestras: %u, Canales: %u, Sample rate: %u\n", 
-           wavData.sampleCount, wavData.channelCount, wavData.sampleRate);
+    WavPreprocess(mfWav.data_u8, mfWav.size);
 
-    // Generar datos Opus (simplificado)
-    size_t opusSize;
-    u8* opusData = SimpleOpusEncoding(wavData.samples, wavData.sampleCount, 
-                                      wavData.channelCount, &opusSize);
-    
-    if (!opusData) {
-        printf("Error: No se pudo codificar a Opus\n");
-        free(inputFileData.data_void);
+    u32 channelCount = WavGetChannelCount(mfWav.data_u8, mfWav.size);
+    u32 sampleRate   = WavGetSampleRate(mfWav.data_u8, mfWav.size);
+    s16 *samples     = WavGetPCM16(mfWav.data_u8, mfWav.size);
+    u32 sampleCount  = WavGetSampleCount(mfWav.data_u8, mfWav.size);
+
+    printf("WAV: muestras=%u, canales=%u, sampleRate=%u\n",
+           sampleCount, channelCount, sampleRate);
+
+    if (!samples || sampleCount == 0 || channelCount == 0) {
+        printf("Error: No se pudo extraer PCM del archivo WAV\n");
+        MemoryFileDestroy(&mfWav);
         return 1;
     }
-    
-    // Crear encabezado formato Capcom
-    size_t totalSize = CAPCOM_HEADER_SIZE + opusSize;
-    u8* capcomOpus = malloc(totalSize);
-    if (!capcomOpus) {
-        printf("Error: No se pudo asignar memoria\n");
-        free(opusData);
-        free(inputFileData.data_void);
+
+    u32 samplesPerChannel = sampleCount / channelCount;
+
+    if (useAutoLoop) {
+        loopStart    = 0;
+        loopEnd      = samplesPerChannel;
+        hasLoopPoints = 1;
+        printf("Loop automático: inicio=0 fin=%u muestras (%.3f segundos)\n",
+               samplesPerChannel, (float)samplesPerChannel / sampleRate);
+    } else if (hasLoopPoints) {
+        if (loopEnd > samplesPerChannel) {
+            printf("Advertencia: loop_end excede las muestras disponibles. Se ajusta a %u.\n",
+                   samplesPerChannel);
+            loopEnd = samplesPerChannel;
+        }
+        if (loopStart >= loopEnd) {
+            printf("Advertencia: loop_start debe ser menor que loop_end. Se desactivan los loops.\n");
+            loopStart    = 0;
+            loopEnd      = 0;
+            hasLoopPoints = 0;
+        } else {
+            printf("Loop: inicio=%u fin=%u muestras (%.3f a %.3f segundos)\n",
+                   loopStart, loopEnd,
+                   (float)loopStart / sampleRate,
+                   (float)loopEnd   / sampleRate);
+        }
+    }
+
+    if (!hasLoopPoints) {
+        loopStart = 0;
+        loopEnd   = 0;
+    }
+
+    printf("Codificando a formato Capcom OPUS..");
+    fflush(stdout);
+
+    // configData: 16 game-specific bytes embedded in the Capcom header (offset 0x20).
+    // These values match the original Capcom game files and are ignored by vgmstream.
+    // criticalBytes: 8 bytes at offset 0x10 of the Capcom header encoding the CBR
+    // frame unit size (0xF8 = 248 bytes = 240-byte Opus packet + 8-byte packet header)
+    // and the sample rate (0xBB80 = 48000 Hz).
+    u8 configData[16]   = {0x00, 0x77, 0xC1, 0x02, 0x04, 0x00, 0x00, 0x00,
+                           0xE6, 0x07, 0x0C, 0x0E, 0x0D, 0x10, 0x23, 0x00};
+    u8 criticalBytes[8] = {0x00, 0x02, 0xF8, 0x00, 0x80, 0xBB, 0x00, 0x00};
+
+    MemoryFile mfOpus = OpusBuildCapcom(
+        samples, sampleCount, sampleRate, channelCount,
+        loopStart, loopEnd, configData, criticalBytes, NULL, 0
+    );
+
+    free(samples);
+    MemoryFileDestroy(&mfWav);
+
+    if (!mfOpus.data_void || mfOpus.size == 0) {
+        printf(" Error: No se pudo codificar el archivo Capcom OPUS\n");
         return 1;
     }
-    
-    // Llenar encabezado Capcom
-    OpusCapcomHeader* header = (OpusCapcomHeader*)capcomOpus;
-    memset(capcomOpus, 0, CAPCOM_HEADER_SIZE); // Inicializar la memoria del encabezado
-    
-    header->numSamples = wavData.sampleCount / wavData.channelCount;  // Total de muestras por canal
-    header->channelCount = wavData.channelCount;
-    
-    // Establecer la información de loop
-    if (loop_start >= 0 && loop_end > loop_start) {
-        // Combine loop points into loopInfo (u64) as required by the OpusCapcomHeader structure
-        header->loopInfo = ((u64)loop_start << 32) | (u64)loop_end;
-    } else {
-        // No loop - set to all FFs
-        header->loopInfo = 0xFFFFFFFFFFFFFFFF;
-    }
-    
-    header->unknown1 = 0xF8000000;  // Valor específico del original
-    header->frameSize = 0x0960;     // Frame size con datos extra (típico para Opus Capcom)
-    header->extraChunks = 0;        // Sin chunks extras
-    header->padding1 = 0;           // Padding a cero
-    header->dataOffset = CAPCOM_HEADER_SIZE;
-    
-    // Configuración estándar de Capcom
-    u32* config = (u32*)header->configData;
-    config[0] = 0x0077C102;
-    config[1] = 0x04000000;
-    config[2] = 0xE107070C;
-    config[3] = 0x00000000;
-    
-    // Copiar los datos Opus después del encabezado Capcom
-    memcpy(capcomOpus + CAPCOM_HEADER_SIZE, opusData, opusSize);
-    
-    // Escribir el archivo resultante
-    FILE* outFile = fopen(output_file, "wb");
-    if (!outFile) {
-        printf("Error: No se pudo crear el archivo de salida\n");
-        free(capcomOpus);
-        free(opusData);
-        free(inputFileData.data_void);
-        return 1;
-    }
-    
-    fwrite(capcomOpus, 1, totalSize, outFile);
-    fclose(outFile);
-    
-    printf("Archivo Opus en formato Capcom creado exitosamente: %s\n", output_file);
-    printf("Tamaño total: %zu bytes\n", totalSize);
-    
-    // Liberar memoria
-    free(capcomOpus);
-    free(opusData);
-    free(inputFileData.data_void);
-    
+
+    printf(" OK\n");
+    printf("Escribiendo '%s'..", output_file);
+    fflush(stdout);
+
+    MemoryFileWrite(&mfOpus, output_file);
+    MemoryFileDestroy(&mfOpus);
+
+    printf(" OK\n\nListo.\n");
     return 0;
 }
