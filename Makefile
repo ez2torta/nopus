@@ -1,3 +1,6 @@
+CC = gcc
+CFLAGS = -O3
+LDFLAGS = -lopus -lm
 
 CC ?= cc
 SRCDIR = src
