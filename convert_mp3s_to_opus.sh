@@ -6,6 +6,33 @@ INPUT_DIR="${SCRIPT_DIR}/mp3s"
 OUTPUT_DIR="${SCRIPT_DIR}/output_opus"
 TEMP_DIR="${OUTPUT_DIR}/.tmp_wav"
 ENCODER_BIN="${SCRIPT_DIR}/nopus"
+LOOP_MODE="auto"
+
+print_usage() {
+    echo "Uso: $(basename "$0") [--no-loop|-no-loop]"
+    echo
+    echo "Opciones:"
+    echo "  --no-loop, -no-loop   Genera OPUS sin loop points"
+    echo "  -h, --help            Muestra esta ayuda"
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --no-loop|-no-loop)
+            LOOP_MODE="none"
+            ;;
+        -h|--help)
+            print_usage
+            exit 0
+            ;;
+        *)
+            echo "Error: opción desconocida '$1'"
+            print_usage
+            exit 1
+            ;;
+    esac
+    shift
+done
 
 if ! command -v ffmpeg >/dev/null 2>&1; then
     echo "Error: ffmpeg no está instalado en el sistema o no está en PATH."
@@ -43,6 +70,12 @@ fi
 
 echo "Procesando ${#mp3_files[@]} archivo(s) de MP3..."
 
+if [[ "${LOOP_MODE}" == "none" ]]; then
+    echo "Modo de loop: desactivado (--no-loop)"
+else
+    echo "Modo de loop: automático (archivo completo)"
+fi
+
 for mp3_file in "${mp3_files[@]}"; do
     file_name="$(basename "${mp3_file}")"
     base_name="${file_name%.*}"
@@ -54,7 +87,11 @@ for mp3_file in "${mp3_files[@]}"; do
     ffmpeg -hide_banner -loglevel error -y -i "${mp3_file}" "${wav_file}"
 
     echo "[2/2] WAV -> OPUS: ${base_name}.opus"
-    "${ENCODER_BIN}" make_capcom_opus "${wav_file}" "${opus_file}" 0 0
+    if [[ "${LOOP_MODE}" == "none" ]]; then
+        "${ENCODER_BIN}" make_capcom_opus "${wav_file}" "${opus_file}" 0 0
+    else
+        "${ENCODER_BIN}" make_capcom_opus "${wav_file}" "${opus_file}" auto
+    fi
 
 done
 
