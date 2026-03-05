@@ -1,6 +1,9 @@
-# Opus files generated during testing
+# Opus files generated during testing (but allow samples/)
 *.opus
+!samples/opus/*.opus
+# WAV files (but allow samples/)
 *.opus.wav
+!samples/wav/*.wav
 # Hex and diff outputs
 *.hex
 cmp_diff.txt
