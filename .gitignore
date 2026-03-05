@@ -31,10 +31,10 @@ opus_originales/*_new.opus
 *test*
 *tmp*
 # Scripts generated for testing
-analyze_*.sh
-combine_*.sh
-hybrid_*.sh
-*.sh
+# analyze_*.sh
+# combine_*.sh
+# hybrid_*.sh
+# *.sh
 # Other files
 vgmstream-cli
 vgmstream-linux-cli.zip
