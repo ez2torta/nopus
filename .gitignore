@@ -4,6 +4,7 @@
 # WAV files (but allow samples/)
 *.opus.wav
 !samples/wav/*.wav
+*.mp3
 # Hex and diff outputs
 *.hex
 cmp_diff.txt
