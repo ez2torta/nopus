@@ -1,5 +1,5 @@
 
-CC = gcc
+CC ?= cc
 SRCDIR = src
 
 # Detect OS and set opus include/lib paths for macOS (Homebrew) or Linux

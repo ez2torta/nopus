@@ -12,9 +12,28 @@ This program is licensed under the MIT license — conhlee 2025.
 
 | Dependency | Purpose |
 |---|---|
-| `gcc` | C compiler |
+| C compiler (`gcc` or `clang`) | compiles the source |
 | `make` | build system |
 | `libopus` | Opus encoding/decoding |
+
+The Makefile uses `CC ?= cc`, so it picks up whatever `cc` points to on your system (clang on macOS, gcc on most Linux distros). You can always override it: `make CC=gcc`.
+
+### Install build tools
+
+**Ubuntu / Debian**
+```bash
+sudo apt-get install build-essential
+```
+
+**Fedora / RHEL**
+```bash
+sudo dnf install gcc make
+```
+
+**macOS** — install Xcode Command Line Tools (ships clang as `cc`):
+```bash
+xcode-select --install
+```
 
 ### Install libopus
 
