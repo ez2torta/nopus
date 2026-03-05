@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INPUT_DIR="${SCRIPT_DIR}/mp3s"
 OUTPUT_DIR="${SCRIPT_DIR}/output_opus"
 TEMP_DIR="${OUTPUT_DIR}/.tmp_wav"
-ENCODER_BIN="${SCRIPT_DIR}/create_capcom_opus"
+ENCODER_BIN="${SCRIPT_DIR}/nopus"
 
 if ! command -v ffmpeg >/dev/null 2>&1; then
     echo "Error: ffmpeg no está instalado en el sistema o no está en PATH."
@@ -54,7 +54,7 @@ for mp3_file in "${mp3_files[@]}"; do
     ffmpeg -hide_banner -loglevel error -y -i "${mp3_file}" "${wav_file}"
 
     echo "[2/2] WAV -> OPUS: ${base_name}.opus"
-    "${ENCODER_BIN}" "${wav_file}" "${opus_file}" 0 0
+    "${ENCODER_BIN}" make_capcom_opus "${wav_file}" "${opus_file}" 0 0
 
 done
 
