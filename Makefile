@@ -4,6 +4,7 @@ WEBDIR = web
 EMCC ?= emcc
 PKG_CONFIG ?= pkg-config
 WASM_PKG_CONFIG_PATH ?=
+WASM_CHECK_LOG_LINES ?= 20
 
 # Detect OS and set opus include/lib paths for macOS (Homebrew) or Linux
 UNAME_S := $(shell uname -s)
@@ -21,6 +22,8 @@ HOST_OPUS_CFLAGS_RAW ?= $(shell $(PKG_CONFIG) --cflags opus 2>/dev/null)
 HOST_OPUS_LIBS ?= $(shell $(PKG_CONFIG) --libs opus 2>/dev/null)
 WASM_OPUS_CFLAGS_RAW ?= $(shell PKG_CONFIG_PATH="$(WASM_PKG_CONFIG_PATH)" $(PKG_CONFIG) --cflags opus 2>/dev/null)
 WASM_OPUS_LIBS ?= $(shell PKG_CONFIG_PATH="$(WASM_PKG_CONFIG_PATH)" $(PKG_CONFIG) --libs opus 2>/dev/null)
+# Some opus.pc files expose -I.../include/opus even though this project includes
+# headers as <opus/opus.h>, so also add the parent include directory when needed.
 HOST_OPUS_PARENT_INC = $(patsubst -I%/opus,-I%,$(filter -I%/opus,$(HOST_OPUS_CFLAGS_RAW)))
 WASM_OPUS_PARENT_INC = $(patsubst -I%/opus,-I%,$(filter -I%/opus,$(WASM_OPUS_CFLAGS_RAW)))
 HOST_OPUS_CFLAGS = $(HOST_OPUS_CFLAGS_RAW) $(HOST_OPUS_PARENT_INC)
@@ -60,19 +63,31 @@ $(TARGET_CAPCOM): $(OBJ_CAPCOM)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 check-wasm-opus:
-	@tmp_src="$$(mktemp /tmp/nopus-wasm-opus-XXXXXX.c)"; \
-	tmp_out="$$(mktemp /tmp/nopus-wasm-opus-XXXXXX.js)"; \
-	printf '%s\n' '#include <opus/opus.h>' 'int main(void) { int error = 0; OpusEncoder* encoder = opus_encoder_create(48000, 2, OPUS_APPLICATION_AUDIO, &error); return encoder == NULL ? error : 0; }' > "$$tmp_src"; \
-	if ! $(EMCC) $(WASM_CFLAGS) "$$tmp_src" -o "$$tmp_out" $(WASM_LDFLAGS) >/dev/null 2>&1; then \
+	@tmp_dir="$${TMPDIR:-/tmp}"; \
+	tmp_src=""; \
+	tmp_out=""; \
+	tmp_log=""; \
+	trap 'rm -f "$$tmp_src" "$$tmp_out" "$$tmp_log"' EXIT INT TERM; \
+	tmp_src="$$(mktemp "$$tmp_dir/nopus-wasm-opus-XXXXXX.c")" || exit 1; \
+	tmp_out="$$(mktemp "$$tmp_dir/nopus-wasm-opus-XXXXXX.js")" || exit 1; \
+	tmp_log="$$(mktemp "$$tmp_dir/nopus-wasm-opus-XXXXXX.log")" || exit 1; \
+	printf '%s\n' \
+		'#include <opus/opus.h>' \
+		'int main(void) {' \
+		'    int error = 0;' \
+		'    OpusEncoder* encoder = opus_encoder_create(48000, 2, OPUS_APPLICATION_AUDIO, &error);' \
+		'    return encoder == NULL ? error : 0;' \
+		'}' > "$$tmp_src"; \
+	if ! $(EMCC) $(WASM_CFLAGS) "$$tmp_src" -o "$$tmp_out" $(WASM_LDFLAGS) >"$$tmp_log" 2>&1; then \
 		echo "Error: make wasm requires a libopus build compiled for Emscripten."; \
 		echo "The host package 'libopus-dev' is not enough because emcc cannot link the native library."; \
 		echo "Build libopus with emconfigure/emmake and then run:"; \
 		echo "  make wasm WASM_PKG_CONFIG_PATH=/absolute/path/to/lib/pkgconfig"; \
 		echo "or pass WASM_OPUS_CFLAGS=... WASM_OPUS_LIBS=..."; \
-		rm -f "$$tmp_src" "$$tmp_out"; \
+		echo "--- emcc output ---"; \
+		sed -n "1,$(WASM_CHECK_LOG_LINES)p" "$$tmp_log"; \
 		exit 1; \
-	fi; \
-	rm -f "$$tmp_src" "$$tmp_out"
+	fi
 
 $(TARGET_WASM): $(SRC_WASM) | check-wasm-opus
 	mkdir -p $(WEBDIR)
