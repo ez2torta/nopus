@@ -3,10 +3,10 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>nopus WASM demo</title>
+    <title>demo WASM de nopus</title>
     <style>
         :root {
-            color-scheme: dark;
+            color-scheme: light dark;
             font-family: system-ui, sans-serif;
             background: #111827;
             color: #f9fafb;
@@ -83,6 +83,31 @@
             display: inline-block;
             margin-top: 1rem;
             color: #93c5fd;
+        }
+
+        @media (prefers-color-scheme: light) {
+            :root {
+                background: #eff6ff;
+                color: #111827;
+            }
+
+            main,
+            .status,
+            .hint,
+            input,
+            select {
+                background: #ffffff;
+                color: #111827;
+                border-color: #cbd5e1;
+            }
+
+            main {
+                box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
+            }
+
+            button {
+                color: #ffffff;
+            }
         }
     </style>
 </head>

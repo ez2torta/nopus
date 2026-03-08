@@ -94,26 +94,28 @@ make clean
 ./nopus <command> <input> <output> [options]
 ```
 
-## Frontend HTML + WASM (sin backend de procesamiento)
+## Frontend HTML + WASM (client-side, no processing backend)
 
-Sí: este proyecto ya tiene la parte más importante para eso, porque la lógica de conversión trabaja sobre buffers en memoria. Con el target `make wasm` se expone un wrapper WebAssembly y `web/index.html` ofrece una interfaz estática para:
+Yes: this project is a good fit for that architecture because the conversion logic already works on in-memory buffers. The `make wasm` target exposes a WebAssembly wrapper and `web/index.html` provides a static frontend for:
 
 - WAV → Nintendo OPUS
 - WAV → Capcom OPUS
 - Nintendo OPUS → WAV
 - Capcom OPUS → WAV
 
-Flujo esperado:
+Expected flow:
 
-1. Compilar el bundle:
+1. Build the bundle:
    ```bash
    make wasm
    ```
-2. Abrir `web/index.html`
-3. Subir el archivo desde el navegador
-4. Convertir y descargar el resultado
+2. Open `web/index.html`
+3. Upload the file in the browser
+4. Convert it and download the result
 
-Eso evita un servidor de procesamiento: el audio entra al navegador, se convierte en WASM y vuelve a descargarse del lado del cliente.
+That avoids a processing server: audio enters the browser, is converted in WASM, and is downloaded again entirely on the client side.
+
+The sample web UI text is currently written in Spanish; if you want a different language, edit `web/index.html` and `web/app.js`.
 
 ### Commands
 

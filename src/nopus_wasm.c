@@ -13,7 +13,18 @@
 #include "type.h"
 #include "wavProcess.h"
 
+// Single in-flight result buffer for the minimal WASM interface.
+// This wrapper assumes one conversion at a time from a single-threaded browser UI.
 static MemoryFile nopusLastResult = {0};
+// Default Capcom wrapper values copied from reference sample files in this repository.
+// They are good defaults for the included samples, but other Capcom titles may need different values.
+static u8 nopusCapcomConfigData[16] = {
+    0x00, 0x77, 0xC1, 0x02,
+    0x04, 0x00, 0x00, 0x00,
+    0xE6, 0x07, 0x0C, 0x0E,
+    0x0D, 0x10, 0x23, 0x00
+};
+static u8 nopusCapcomCriticalBytes[8] = {0x00, 0x02, 0xF8, 0x00, 0x80, 0xBB, 0x00, 0x00};
 
 static void NopusSetResult(MemoryFile* result) {
     MemoryFileDestroy(&nopusLastResult);
@@ -23,15 +34,16 @@ static void NopusSetResult(MemoryFile* result) {
 }
 
 EMSCRIPTEN_KEEPALIVE
-int nopus_make_wav(const u8* inputData, u32 inputSize) {
-    (void)inputSize;
+int nopus_make_wav(u8* inputData, u32 inputSize) {
+    if (!inputData || inputSize == 0)
+        return 1;
 
-    OpusPreprocess((u8*)inputData);
+    OpusPreprocess(inputData);
 
-    u32 channelCount = OpusGetChannelCount((u8*)inputData);
-    u32 sampleRate = OpusGetSampleRate((u8*)inputData);
+    u32 channelCount = OpusGetChannelCount(inputData);
+    u32 sampleRate = OpusGetSampleRate(inputData);
 
-    ListData samples = OpusDecode((u8*)inputData);
+    ListData samples = OpusDecode(inputData);
     if (!samples.data || samples.elementCount == 0)
         return 1;
 
@@ -46,7 +58,10 @@ int nopus_make_wav(const u8* inputData, u32 inputSize) {
 }
 
 EMSCRIPTEN_KEEPALIVE
-int nopus_make_opus(const u8* inputData, u32 inputSize) {
+int nopus_make_opus(u8* inputData, u32 inputSize) {
+    if (!inputData || inputSize == 0)
+        return 1;
+
     WavPreprocess(inputData, inputSize);
 
     u32 channelCount = WavGetChannelCount(inputData, inputSize);
@@ -68,7 +83,10 @@ int nopus_make_opus(const u8* inputData, u32 inputSize) {
 }
 
 EMSCRIPTEN_KEEPALIVE
-int nopus_make_capcom_opus(const u8* inputData, u32 inputSize, u32 loopStart, u32 loopEnd, int autoLoop) {
+int nopus_make_capcom_opus(u8* inputData, u32 inputSize, u32 loopStart, u32 loopEnd, int autoLoop) {
+    if (!inputData || inputSize == 0)
+        return 1;
+
     WavPreprocess(inputData, inputSize);
 
     u32 channelCount = WavGetChannelCount(inputData, inputSize);
@@ -85,17 +103,12 @@ int nopus_make_capcom_opus(const u8* inputData, u32 inputSize, u32 loopStart, u3
         loopEnd = samplesPerChannel;
     }
 
-    u8 configData[16] = {
-        0x00, 0x77, 0xC1, 0x02,
-        0x04, 0x00, 0x00, 0x00,
-        0xE6, 0x07, 0x0C, 0x0E,
-        0x0D, 0x10, 0x23, 0x00
-    };
-    u8 criticalBytes[8] = {0x00, 0x02, 0xF8, 0x00, 0x80, 0xBB, 0x00, 0x00};
-
+    // configData: 16 game-specific bytes embedded in the Capcom wrapper header.
+    // These values are copied from known-good Capcom sample files included in this repo.
+    // criticalBytes: fixed header values for the CBR frame unit size and sample rate.
     MemoryFile opus = OpusBuildCapcom(
         samples, sampleCount, sampleRate, channelCount,
-        loopStart, loopEnd, configData, criticalBytes, NULL, 0
+        loopStart, loopEnd, nopusCapcomConfigData, nopusCapcomCriticalBytes, NULL, 0
     );
     free(samples);
 
@@ -107,13 +120,14 @@ int nopus_make_capcom_opus(const u8* inputData, u32 inputSize, u32 loopStart, u3
 }
 
 EMSCRIPTEN_KEEPALIVE
-int nopus_make_capcom_wav(const u8* inputData, u32 inputSize) {
-    (void)inputSize;
+int nopus_make_capcom_wav(u8* inputData, u32 inputSize) {
+    if (!inputData || inputSize == 0)
+        return 1;
 
     u32 channelCount = OpusCapcomGetChannelCount(inputData);
     u32 sampleRate = OpusCapcomGetSampleRate(inputData);
 
-    ListData samples = OpusDecodeCapcom((u8*)inputData);
+    ListData samples = OpusDecodeCapcom(inputData);
     if (!samples.data || samples.elementCount == 0)
         return 1;
 

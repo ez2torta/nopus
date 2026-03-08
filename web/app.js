@@ -1,6 +1,9 @@
 (() => {
     const elements = {};
+    // Short delay to let the generated bundle finish loading before showing a missing-build hint.
+    const WASM_LOAD_TIMEOUT_MS = 1500;
     let runtimeReady = false;
+    let downloadUrl = null;
 
     function outputExtension(command) {
         if (command === 'make_wav' || command === 'make_capcom_wav')
@@ -33,7 +36,16 @@
 
         const command = elements.command.value;
         const inputBytes = new Uint8Array(await file.arrayBuffer());
+        if (!inputBytes.length) {
+            setStatus('El archivo está vacío.');
+            return;
+        }
+
         const inputPtr = Module._malloc(inputBytes.length);
+        if (!inputPtr) {
+            setStatus('No se pudo reservar memoria en el módulo WASM.');
+            return;
+        }
         Module.HEAPU8.set(inputBytes, inputPtr);
 
         elements.convert.disabled = true;
@@ -71,9 +83,16 @@
 
             const resultPtr = Module._nopus_result_ptr();
             const resultSize = Module._nopus_result_size();
-            const resultBytes = Module.HEAPU8.slice(resultPtr, resultPtr + resultSize);
+            if (!resultPtr || !resultSize) {
+                setStatus('La conversión no devolvió datos.');
+                return;
+            }
+            const resultBytes = Module.HEAPU8.subarray(resultPtr, resultPtr + resultSize);
             const blob = new Blob([resultBytes], { type: 'application/octet-stream' });
+            if (downloadUrl)
+                URL.revokeObjectURL(downloadUrl);
             const url = URL.createObjectURL(blob);
+            downloadUrl = url;
 
             elements.download.href = url;
             elements.download.download = outputName(file.name, command);
@@ -107,7 +126,7 @@
         window.setTimeout(() => {
             if (!runtimeReady)
                 setStatus('No se encontró `web/nopus-web.js`. Ejecutá `make wasm` antes de abrir esta página.');
-        }, 1500);
+        }, WASM_LOAD_TIMEOUT_MS);
     }
 
     window.Module = window.Module || {};
