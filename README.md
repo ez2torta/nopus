@@ -103,6 +103,8 @@ If you already have a wasm-compatible `libopus`, you can also pass the flags dir
 make wasm WASM_OPUS_CFLAGS="..." WASM_OPUS_LIBS="..."
 ```
 
+If you run `make wasm` with only the host package installed, the Makefile now stops immediately with a message telling you to provide a wasm-compatible `libopus`, instead of relying on a low-level `emcc` header error.
+
 That target writes `web/nopus-web.js`, a single-file Emscripten bundle with the WASM payload embedded. After that, open `web/index.html` and the page will process WAV/OPUS files locally in the browser without a processing backend.
 
 To clean build artifacts:

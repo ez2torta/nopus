@@ -68,6 +68,19 @@ check-wasm-opus:
 	tmp_out=""; \
 	tmp_log=""; \
 	trap 'rm -f "$$tmp_src" "$$tmp_out" "$$tmp_log"' EXIT INT TERM; \
+	if ! command -v $(EMCC) >/dev/null 2>&1; then \
+		echo "Error: make wasm requires Emscripten ('$(EMCC)') in PATH."; \
+		exit 1; \
+	fi; \
+	if [ -z "$(strip $(WASM_OPUS_CFLAGS) $(WASM_OPUS_LIBS))" ]; then \
+		echo "Error: make wasm requires a libopus build compiled for Emscripten."; \
+		echo "No wasm-compatible Opus include/lib flags were found."; \
+		echo "The host package 'libopus-dev' is not enough because emcc cannot use the native library."; \
+		echo "Build libopus with emconfigure/emmake and then run:"; \
+		echo "  make wasm WASM_PKG_CONFIG_PATH=/absolute/path/to/lib/pkgconfig"; \
+		echo "or pass WASM_OPUS_CFLAGS=... WASM_OPUS_LIBS=..."; \
+		exit 1; \
+	fi; \
 	tmp_src="$$(mktemp "$$tmp_dir/nopus-wasm-opus-XXXXXX.c")" || exit 1; \
 	tmp_out="$$(mktemp "$$tmp_dir/nopus-wasm-opus-XXXXXX.js")" || exit 1; \
 	tmp_log="$$(mktemp "$$tmp_dir/nopus-wasm-opus-XXXXXX.log")" || exit 1; \
@@ -80,7 +93,7 @@ check-wasm-opus:
 		'}' > "$$tmp_src"; \
 	if ! $(EMCC) $(WASM_CFLAGS) "$$tmp_src" -o "$$tmp_out" $(WASM_LDFLAGS) >"$$tmp_log" 2>&1; then \
 		echo "Error: make wasm requires a libopus build compiled for Emscripten."; \
-		echo "The host package 'libopus-dev' is not enough because emcc cannot link the native library."; \
+		echo "The provided Opus flags are not usable by emcc in this environment."; \
 		echo "Build libopus with emconfigure/emmake and then run:"; \
 		echo "  make wasm WASM_PKG_CONFIG_PATH=/absolute/path/to/lib/pkgconfig"; \
 		echo "or pass WASM_OPUS_CFLAGS=... WASM_OPUS_LIBS=..."; \
