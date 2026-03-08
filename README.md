@@ -69,6 +69,18 @@ This produces two binaries in the repository root:
 | `nopus` | Main converter (decode/encode Nintendo & Capcom OPUS) |
 | `create_capcom_opus` | Standalone Capcom OPUS encoder (legacy) |
 
+### Optional: build the browser/WASM bundle
+
+If you want a pure client-side HTML frontend, you can compile the converter to WebAssembly and keep all audio processing inside the browser:
+
+```bash
+make wasm
+```
+
+This target expects an Emscripten toolchain (`emcc`) plus a `libopus` build that is available to that toolchain.
+
+That target writes `web/nopus-web.js`, a single-file Emscripten bundle with the WASM payload embedded. After that, open `web/index.html` and the page will process WAV/OPUS files locally in the browser without a processing backend.
+
 To clean build artifacts:
 ```bash
 make clean
@@ -81,6 +93,27 @@ make clean
 ```
 ./nopus <command> <input> <output> [options]
 ```
+
+## Frontend HTML + WASM (sin backend de procesamiento)
+
+Sí: este proyecto ya tiene la parte más importante para eso, porque la lógica de conversión trabaja sobre buffers en memoria. Con el target `make wasm` se expone un wrapper WebAssembly y `web/index.html` ofrece una interfaz estática para:
+
+- WAV → Nintendo OPUS
+- WAV → Capcom OPUS
+- Nintendo OPUS → WAV
+- Capcom OPUS → WAV
+
+Flujo esperado:
+
+1. Compilar el bundle:
+   ```bash
+   make wasm
+   ```
+2. Abrir `web/index.html`
+3. Subir el archivo desde el navegador
+4. Convertir y descargar el resultado
+
+Eso evita un servidor de procesamiento: el audio entra al navegador, se convierte en WASM y vuelve a descargarse del lado del cliente.
 
 ### Commands
 
@@ -192,6 +225,7 @@ nopus/
 │   ├── opus/                   Original Capcom OPUS samples
 │   └── wav/                    WAVs decoded from originals via vgmstream -i
 ├── docs/                       Analysis scripts and hex dumps
+├── web/                        Static HTML frontend + generated WASM bundle
 ├── vgmstream-linux-cli.zip     vgmstream r2083 Linux CLI binary
 └── Makefile
 ```
