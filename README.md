@@ -79,6 +79,30 @@ make wasm
 
 This target expects an Emscripten toolchain (`emcc`) plus a `libopus` build that is available to that toolchain.
 
+> `apt install libopus-dev` only installs the native host library. That is enough for the normal `make`, but **not** for `make wasm`, because `emcc` cannot link the host `libopus`.
+>
+> Even though `main.c` includes `opusProcess.h` rather than `<opus/opus.h>` directly, `opusProcess.h` itself includes `<opus/opus.h>`, so the WebAssembly build still needs a wasm-compatible Opus SDK.
+
+One workable flow on Ubuntu/Debian is:
+
+```bash
+sudo apt-get install emscripten libopus-dev
+apt source opus
+cd opus-*
+emconfigure ./configure --host=wasm32-unknown-emscripten --disable-extra-programs --disable-doc --prefix="$PWD/dist"
+emmake make -j"$(nproc)"
+emmake make install
+
+cd /path/to/nopus
+make wasm WASM_PKG_CONFIG_PATH=/absolute/path/to/opus-*/dist/lib/pkgconfig
+```
+
+If you already have a wasm-compatible `libopus`, you can also pass the flags directly:
+
+```bash
+make wasm WASM_OPUS_CFLAGS="..." WASM_OPUS_LIBS="..."
+```
+
 That target writes `web/nopus-web.js`, a single-file Emscripten bundle with the WASM payload embedded. After that, open `web/index.html` and the page will process WAV/OPUS files locally in the browser without a processing backend.
 
 To clean build artifacts:
@@ -107,7 +131,7 @@ Expected flow:
 
 1. Build the bundle:
    ```bash
-   make wasm
+   make wasm WASM_PKG_CONFIG_PATH=/absolute/path/to/lib/pkgconfig
    ```
 2. Open `web/index.html`
 3. Upload the file in the browser
