@@ -75,6 +75,26 @@ typedef struct __attribute__((packed)) {
     u8 configData[16]; // Game-specific configuration bytes (ignored by vgmstream)
 } OpusCapcomHeader;
 
+// Returns 1 if data looks like a Capcom OPUS file, 0 for Nintendo OPUS (or unknown).
+// Detection: first dword is NOT CHUNK_HEADER_ID, but the dword at dataOffset (0x1C) IS.
+int OpusIsCapcomFormat(const u8* data, u32 dataSize) {
+    if (dataSize < 4)
+        return 0;
+    u32 firstDword;
+    memcpy(&firstDword, data, 4);
+    if (firstDword == CHUNK_HEADER_ID || firstDword == OGG_OPUS_ID)
+        return 0;    // Definitely Nintendo or Ogg
+    if (dataSize < 0x20)
+        return 0;
+    u32 nintendoOff;
+    memcpy(&nintendoOff, data + 0x1C, 4);
+    if (nintendoOff + 4 > dataSize)
+        return 0;
+    u32 nintendoChunkId;
+    memcpy(&nintendoChunkId, data + nintendoOff, 4);
+    return nintendoChunkId == CHUNK_HEADER_ID;
+}
+
 void OpusPreprocess(u8* opusData) {
     OpusFileHeader* fileHeader = (OpusFileHeader*)opusData;
 

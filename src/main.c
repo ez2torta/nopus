@@ -46,15 +46,29 @@ int main(int argc, char** argv) {
             return 1;
         }
 
-        OpusPreprocess(mfOpus.data_u8);
+        u32 channelCount, sampleRate;
+        ListData samples;
 
-        u32 channelCount = OpusGetChannelCount(mfOpus.data_u8);
-        u32 sampleRate = OpusGetSampleRate(mfOpus.data_u8);
+        if (OpusIsCapcomFormat(mfOpus.data_u8, mfOpus.size)) {
+            printf("(Detected Capcom OPUS format)\n");
+            channelCount = OpusCapcomGetChannelCount(mfOpus.data_u8);
+            sampleRate   = OpusCapcomGetSampleRate(mfOpus.data_u8);
 
-        printf("Decoding..");
-        fflush(stdout);
+            printf("Decoding..");
+            fflush(stdout);
 
-        ListData samples = OpusDecode(mfOpus.data_u8);
+            samples = OpusDecodeCapcom(mfOpus.data_u8);
+        } else {
+            OpusPreprocess(mfOpus.data_u8);
+            channelCount = OpusGetChannelCount(mfOpus.data_u8);
+            sampleRate   = OpusGetSampleRate(mfOpus.data_u8);
+
+            printf("Decoding..");
+            fflush(stdout);
+
+            samples = OpusDecode(mfOpus.data_u8);
+        }
+
         if (!samples.data || samples.elementCount == 0) {
             printf("Error: Failed to decode OPUS file.\n");
             MemoryFileDestroy(&mfOpus);
