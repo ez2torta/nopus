@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>demo WASM de nopus</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+            font-family: system-ui, sans-serif;
+            background: #111827;
+            color: #f9fafb;
+        }
+
+        body {
+            margin: 0;
+            padding: 2rem;
+        }
+
+        main {
+            max-width: 52rem;
+            margin: 0 auto;
+            background: #1f2937;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+        }
+
+        h1 {
+            margin-top: 0;
+        }
+
+        .grid {
+            display: grid;
+            gap: 1rem;
+        }
+
+        @media (min-width: 760px) {
+            .grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        label {
+            display: grid;
+            gap: 0.35rem;
+            font-weight: 600;
+        }
+
+        input, select, button {
+            border: 1px solid #374151;
+            border-radius: 0.6rem;
+            padding: 0.75rem 0.9rem;
+            font: inherit;
+            background: #111827;
+            color: inherit;
+        }
+
+        button {
+            cursor: pointer;
+            background: #2563eb;
+            border-color: #2563eb;
+            font-weight: 700;
+        }
+
+        button:disabled {
+            cursor: wait;
+            opacity: 0.7;
+        }
+
+        .status, .hint {
+            padding: 0.9rem 1rem;
+            border-radius: 0.75rem;
+            background: #111827;
+            border: 1px solid #374151;
+        }
+
+        .hint {
+            color: #cbd5e1;
+        }
+
+        a.download {
+            display: inline-block;
+            margin-top: 1rem;
+            color: #93c5fd;
+        }
+
+        @media (prefers-color-scheme: light) {
+            :root {
+                background: #eff6ff;
+                color: #111827;
+            }
+
+            main,
+            .status,
+            .hint,
+            input,
+            select {
+                background: #ffffff;
+                color: #111827;
+                border-color: #cbd5e1;
+            }
+
+            main {
+                box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
+            }
+
+            button {
+                color: #ffffff;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>nopus en el navegador</h1>
+        <p>
+            Esta demo deja el procesamiento en el cliente: subís un WAV u OPUS, el módulo WASM corre en el navegador
+            y el archivo convertido se descarga sin mandar audio a un backend.
+        </p>
+
+        <div class="hint">
+            Primero compilá el bundle WebAssembly con <code>make wasm</code>. El resultado queda en
+            <code>web/nopus-web.js</code> con el WASM embebido, así que podés abrir este HTML sin servidor de
+            procesamiento.
+        </div>
+
+        <div class="grid" style="margin-top: 1rem;">
+            <label>
+                Conversión
+                <select id="command">
+                    <option value="make_capcom_opus">WAV → Capcom OPUS</option>
+                    <option value="make_opus">WAV → Nintendo OPUS</option>
+                    <option value="make_wav">Nintendo OPUS → WAV</option>
+                    <option value="make_capcom_wav">Capcom OPUS → WAV</option>
+                </select>
+            </label>
+
+            <label>
+                Archivo de entrada
+                <input id="input-file" type="file">
+            </label>
+
+            <label>
+                Loop start (samples)
+                <input id="loop-start" type="number" min="0" value="0">
+            </label>
+
+            <label>
+                Loop end (samples)
+                <input id="loop-end" type="number" min="0" value="0">
+            </label>
+        </div>
+
+        <label style="display:flex; gap:0.6rem; align-items:center; margin: 1rem 0;">
+            <input id="auto-loop" type="checkbox">
+            Auto loop (0 → fin del audio, solo para WAV → Capcom OPUS)
+        </label>
+
+        <button id="convert" type="button" disabled>Esperando módulo WASM…</button>
+
+        <div id="status" class="status" style="margin-top: 1rem;">Cargando interfaz…</div>
+        <a id="download" class="download" hidden download>Descargar resultado</a>
+    </main>
+
+    <script src="./app.js"></script>
+    <script src="./nopus-web.js"></script>
+</body>
+</html>

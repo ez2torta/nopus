@@ -69,6 +69,44 @@ This produces two binaries in the repository root:
 | `nopus` | Main converter (decode/encode Nintendo & Capcom OPUS) |
 | `create_capcom_opus` | Standalone Capcom OPUS encoder (legacy) |
 
+### Optional: build the browser/WASM bundle
+
+If you want a pure client-side HTML frontend, you can compile the converter to WebAssembly and keep all audio processing inside the browser:
+
+```bash
+make wasm
+```
+
+This target expects an Emscripten toolchain (`emcc`) plus a `libopus` build that is available to that toolchain.
+
+> `apt install libopus-dev` only installs the native host library. That is enough for the normal `make`, but **not** for `make wasm`, because `emcc` cannot link the host `libopus`.
+>
+> Even though `main.c` includes `opusProcess.h` rather than `<opus/opus.h>` directly, `opusProcess.h` itself includes `<opus/opus.h>`, so the WebAssembly build still needs a wasm-compatible Opus SDK.
+
+One workable flow on Ubuntu/Debian is:
+
+```bash
+sudo apt-get install emscripten libopus-dev
+apt source opus
+cd opus-*
+emconfigure ./configure --host=wasm32-unknown-emscripten --disable-extra-programs --disable-doc --prefix="$PWD/dist"
+emmake make -j"$(nproc)"
+emmake make install
+
+cd /path/to/nopus
+make wasm WASM_PKG_CONFIG_PATH=/absolute/path/to/opus-*/dist/lib/pkgconfig
+```
+
+If you already have a wasm-compatible `libopus`, you can also pass the flags directly:
+
+```bash
+make wasm WASM_OPUS_CFLAGS="..." WASM_OPUS_LIBS="..."
+```
+
+If you run `make wasm` with only the host package installed, the Makefile now stops immediately with a message telling you to provide a wasm-compatible `libopus`, instead of relying on a low-level `emcc` header error.
+
+That target writes `web/nopus-web.js`, a single-file Emscripten bundle with the WASM payload embedded. After that, open `web/index.html` and the page will process WAV/OPUS files locally in the browser without a processing backend.
+
 To clean build artifacts:
 ```bash
 make clean
@@ -81,6 +119,29 @@ make clean
 ```
 ./nopus <command> <input> <output> [options]
 ```
+
+## Frontend HTML + WASM (client-side, no processing backend)
+
+Yes: this project is a good fit for that architecture because the conversion logic already works on in-memory buffers. The `make wasm` target exposes a WebAssembly wrapper and `web/index.html` provides a static frontend for:
+
+- WAV → Nintendo OPUS
+- WAV → Capcom OPUS
+- Nintendo OPUS → WAV
+- Capcom OPUS → WAV
+
+Expected flow:
+
+1. Build the bundle:
+   ```bash
+   make wasm WASM_PKG_CONFIG_PATH=/absolute/path/to/lib/pkgconfig
+   ```
+2. Open `web/index.html`
+3. Upload the file in the browser
+4. Convert it and download the result
+
+That avoids a processing server: audio enters the browser, is converted in WASM, and is downloaded again entirely on the client side.
+
+The sample web UI text is currently written in Spanish; if you want a different language, edit `web/index.html` and `web/app.js`.
 
 ### Commands
 
@@ -192,6 +253,7 @@ nopus/
 │   ├── opus/                   Original Capcom OPUS samples
 │   └── wav/                    WAVs decoded from originals via vgmstream -i
 ├── docs/                       Analysis scripts and hex dumps
+├── web/                        Static HTML frontend + generated WASM bundle
 ├── vgmstream-linux-cli.zip     vgmstream r2083 Linux CLI binary
 └── Makefile
 ```
